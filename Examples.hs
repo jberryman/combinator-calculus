@@ -7,16 +7,17 @@ import CombinatorCalculus
 
 main = do
      -- a random combinator expression: S(KS)KISI:
-    let e = expr S*:(expr K *.S) *.K *.cI *.S *.cI  
+    let e = S · (K · S) · K · cI · S · cI  
     printSteps $ evalNormalOrder e
-    
+   
+    putStrLn "------------------------------------"
+ 
      -- the number 2 as a Church Numeral in the combinator calculus:
-     --(S (S (K S) K) I)
-    let two = expr S*:(expr S*:(expr K*.S)*.K)*.cI
+    let two = S·(S·(K·S)·K)·cI
     
      -- ...and "rendered" through application on two combinators `f` and `x`
      -- and evaluation:
-    printSteps $ evalNormalOrder $ two *. f *. x
+    printSteps $ evalNormalOrder $ two · f · x
 
 
 
@@ -34,7 +35,7 @@ printSteps = mapM_ putStrLn . zipWith prettify [1..]
 data S = S deriving Show
 instance Combinator S where
     takesArgs _ = 3
-    applyArgs _ [a,b,c] = expr a *. c *: (expr b *. c)
+    applyArgs _ [a,b,c] = a · c · (b · c)
 
 
 data K = K deriving Show
@@ -46,7 +47,7 @@ instance Combinator K where
  -- the "Identity" combinator `I`, defined in terms of `S` and `K`. Evaluating
  -- this combinator may substitute (S K K) for `I`, or that step may be hidden
  -- depending on how the evaluation function was defined:
-cI = (expr S *. K *. K)  `named` "I"
+cI = (S · K · K)  `named` "I"
 
 
  -- some "quasi-combinators" that let us play with Church Numerals encoded in 
