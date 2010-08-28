@@ -1,10 +1,11 @@
 {-# LANGUAGE ExistentialQuantification, ViewPatterns, 
         GeneralizedNewtypeDeriving #-}
 module CombinatorCalculus 
-    (Name, Combinator(takesArgs,applyArgs),
-     Term(), Expr(),
-     named, expr, isNormal, evalNormalOrder, (·))
-    where
+    ( 
+      Combinator(takesArgs,applyArgs),
+      Term(), Expr(),
+      named, expr, isNormal, evalToNormal, (·)
+    ) where
 
 
 import Data.Sequence
@@ -43,8 +44,16 @@ infixl 7 ·
  -- its arguments:
 class (Show c)=> Combinator c where
     takesArgs :: c -> Int
+
     applyArgs :: c -> [Term] -> Expr
-     -- HIDDEN METHOD:
+    
+     -- HIDDEN METHOD: EXPORTED AS A FUNCTION:
+     -- if a combinator takes 0 args, we assume it can be evaluated and we
+     -- say it is not in Normal Form:
+    isNormal :: c -> Bool
+    isNormal = (> 0) . takesArgs
+    
+     -- HIDDEN METHOD: user defined combinators are placed in a black box:
     toTerm :: c -> Term
     toTerm = Term
 
@@ -52,8 +61,6 @@ class (Show c)=> Combinator c where
 
     ----------------------
 
-
-type Name = String
 
 data Term = forall c. Combinator c => Term { unbox :: c }
           | SubExpr   { subExpr :: Expr }
@@ -75,6 +82,8 @@ instance Combinator Term where
     applyArgs (Term c) = applyArgs c 
     applyArgs e        = applyArgs (subExpr e)
 
+    isNormal (Term c) = takesArgs c > 0
+    isNormal e        = isNormal (subExpr e)
    
  
 
@@ -95,31 +104,42 @@ instance Combinator Expr where
         let argsNeeded = (takesArgs c) - (Data.Sequence.length cs)
          in if argsNeeded < 0  then 0  else argsNeeded
 
+    isNormal e = (takesArgs e > 0) && (F.all isNormal $ combSeq e)
+
 
 
     --------------------
     -- HELPER FUNCTIONS:
     --------------------
 
+
  -- for composing Combinator expressions:
 (·) :: (Combinator c1,Combinator c2)=> c1 -> c2 -> Expr
-c1 · (toTerm->t2) = case toTerm c1 of
-                         t1@(Term _)  -> Expr (singleton t1 |> t2)
-                         (subExpr->e) -> e `appendTerms` singleton t2
-    
+c1 · (toTerm->t2) = 
+     case toTerm c1 of                                                                
+          (SubExpr e) -> e `appendTerms` singleton t2                                 
+           -- named expression or bare Term start a new sub-expression:               
+          t1          -> Expr (singleton t1 |> t2)
+
 
  -- Allows for re-defining the Show instance of some Expr, letting you treat the
  -- expression like any other Combinator:
-named :: Expr -> Name -> Term
+named :: Expr -> String -> Term
 named = NamedExpr
 
  -- For making a singleton expression:
 expr :: (Combinator c)=> c -> Expr
 expr = Expr . singleton . toTerm
 
- -- NOT EXPORTED:
+
+---- NOT EXPORTED:
+
+ -- add a sequence of terms to end of expression:
 appendTerms :: Expr -> (Seq Term) -> Expr
 appendTerms (Expr s) s' = Expr ( s >< s') 
+
+ -- unpack, prepend term, re-pack expression:
+prependTerm c = Expr . (c<|) . combSeq 
 
 
     ------------------------
@@ -127,39 +147,23 @@ appendTerms (Expr s) s' = Expr ( s >< s')
     ------------------------
 
 
- -- is the Expression in a state where it cannot be evaluated further?:
-isNormal :: Expr -> Bool
-isNormal = norm . SubExpr
-    where norm (Term c) = takesArgs c > 0
-          norm e = (takesArgs e > 0)  && 
-                   (F.all norm $ combSeq $ subExpr e)
-
-
-
-
+-- CHANGE THIS TO EVALTONORMAL, AND MAKE IT EVALUATE OUTERMOST-LEFTMOST
+-- FIRST. MAPPING THE FULLY EVALUATED HEAD ONTO REST OF COMPUTATION:
+--     1. EVAL HEAD EXPRESSION COMPLETELY
+--     2. EVAL TOPMOST EXPRESSION, 
+--     3. IF HEAD IS STILL NORMAL, START ON TAIL WITH (1), ELSE (2)
  -- evaluate leftmost-outermost redex until top level expression is in Normal
  -- Form:
-evalNormalOrder :: Expr -> [Expr]
-evalNormalOrder e@(viewl.combSeq-> c:<cs)  
-    | argsReq > argsAvail = [e]
-    | otherwise = e : evalNormalOrder (cEvaled `appendTerms` csRest)
+evalToNormal :: Expr -> [Expr]
+evalToNormal e
+    | Data.Sequence.null $ combSeq e = [e]
+    | argsReq > argsAvail            = map (prependTerm c) $ evalToNormal $ Expr cs
+    | otherwise                      = e : evalToNormal (cEvaled `appendTerms` csRest)
+     where (c :< cs) = viewl $ combSeq e
             -- does combinator 'c' have enough arguments to evaluate?:
-     where argsReq         = takesArgs c
-           argsAvail        = Data.Sequence.length cs
+           argsReq   = takesArgs c
+           argsAvail = Data.Sequence.length cs
             -- the transformed expression with remaining arguments:
            (csArgs',csRest) = Data.Sequence.splitAt argsReq cs
-           cEvaled         = applyArgs c (F.toList csArgs')
-           
-
- -- Evaluates arguments to functions fully, before applying combinator to args:
-{-
-evalApplicativeOrder :: Expr -> [Expr]
-evalApplicativeOrder e@(viewl.combSeq-> c:<cs)  
-    | argsReq > argsAvail = [e]
-    | otherwise = e : evalNormalOrder (cEvaled `appendTerms` csRest)
-           
-     where argsReq   = takesArgs c
-           argsAvail = Data.Sequence.length cs
-           (csArgs',csRest) = Data.Sequence.splitAt argsReq cs
            cEvaled          = applyArgs c (F.toList csArgs')
--}
+

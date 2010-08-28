@@ -7,8 +7,8 @@ import CombinatorCalculus
 
 main = do
      -- a random combinator expression: S(KS)KISI:
-    let e = S · (K · S) · K · cI · S · cI  
-    printSteps $ evalNormalOrder e
+    let e = cI · (cI · S) · (K · S) · K · cI · S · cI  
+    printSteps $ evalToNormal e
    
     putStrLn "------------------------------------"
  
@@ -17,7 +17,7 @@ main = do
     
      -- ...and "rendered" through application on two combinators `f` and `x`
      -- and evaluation:
-    printSteps $ evalNormalOrder $ two · f · x
+    printSteps $ evalToNormal $ two · f · x
 
 
 
@@ -31,6 +31,7 @@ printSteps = mapM_ putStrLn . zipWith prettify [1..]
     -----------------------
     -- DEFINED COMBINATORS:
     -----------------------
+
 
 data S = S deriving Show
 instance Combinator S where
