@@ -8,7 +8,7 @@ module CombinatorCalculus
     ) where
 
 
-import Data.Sequence
+import Data.Sequence as S
 import qualified Data.Foldable as F
 
 
@@ -101,7 +101,7 @@ instance Combinator Expr where
     applyArgs e = appendTerms e . fromList 
 
     takesArgs (viewl.combSeq-> c:<cs) = 
-        let argsNeeded = (takesArgs c) - (Data.Sequence.length cs)
+        let argsNeeded = (takesArgs c) - (S.length cs)
          in if argsNeeded < 0  then 0  else argsNeeded
 
     isNormal e = (takesArgs e > 0) && (F.all isNormal $ combSeq e)
@@ -156,14 +156,14 @@ prependTerm c = Expr . (c<|) . combSeq
  -- Form:
 evalToNormal :: Expr -> [Expr]
 evalToNormal e
-    | Data.Sequence.null $ combSeq e = [e]
-    | argsReq > argsAvail            = map (prependTerm c) $ evalToNormal $ Expr cs
-    | otherwise                      = e : evalToNormal (cEvaled `appendTerms` csRest)
+    | S.null $ combSeq e  = [e]
+    | argsReq > argsAvail = map (prependTerm c) $ evalToNormal $ Expr cs
+    | otherwise           = e : evalToNormal (cEvaled `appendTerms` csRest)
      where (c :< cs) = viewl $ combSeq e
             -- does combinator 'c' have enough arguments to evaluate?:
            argsReq   = takesArgs c
-           argsAvail = Data.Sequence.length cs
+           argsAvail = S.length cs
             -- the transformed expression with remaining arguments:
-           (csArgs',csRest) = Data.Sequence.splitAt argsReq cs
+           (csArgs',csRest) = S.splitAt argsReq cs
            cEvaled          = applyArgs c (F.toList csArgs')
 
