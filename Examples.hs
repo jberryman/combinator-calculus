@@ -6,22 +6,25 @@ import CombinatorCalculus
 
 
 main = do
-     -- a random combinator expression: S(KS)KISI:
+     -- a random combinator expression: 
     let e = cI · (cI · S) · (K · S) · K · cI · S · cI  
-    printSteps $ evalToNormal e
-   
+    print $ evalToNormal e
+  
+ 
     putStrLn "------------------------------------"
+
  
      -- the number 2 as a Church Numeral in the combinator calculus:
     let two = S·(S·(K·S)·K)·cI
     
      -- ...and "rendered" through application on two combinators `f` and `x`
      -- and evaluation:
-    printSteps $ evalToNormal $ two · f · x
+    print $ evalToNormal $ two · f · x
 
 
 
 -- a little helper for printing evaluation steps:
+printSteps :: [Expr] -> IO ()
 printSteps = mapM_ putStrLn . zipWith prettify [1..] 
     where prettify n e = show n ++". \t"++ show e
 

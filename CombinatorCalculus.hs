@@ -35,6 +35,8 @@ import qualified Data.Foldable as F
  --       Ctrl-K '.' 'M'
 infixl 7 ·
 
+
+
     ---------------------
     -- TYPES AND CLASSES:
     ---------------------
@@ -104,7 +106,7 @@ instance Combinator Expr where
         let argsNeeded = (takesArgs c) - (S.length cs)
          in if argsNeeded < 0  then 0  else argsNeeded
 
-    isNormal e = (takesArgs e > 0) && (F.all isNormal $ combSeq e)
+    isNormal e@(Expr s) = (takesArgs e > 0) && (F.all isNormal s)
 
 
 
@@ -132,6 +134,8 @@ expr :: (Combinator c)=> c -> Expr
 expr = Expr . singleton . toTerm
 
 
+
+
 ---- NOT EXPORTED:
 
  -- add a sequence of terms to end of expression:
@@ -139,31 +143,64 @@ appendTerms :: Expr -> (Seq Term) -> Expr
 appendTerms (Expr s) s' = Expr ( s >< s') 
 
  -- unpack, prepend term, re-pack expression:
-prependTerm c = Expr . (c<|) . combSeq 
+prependTerm c = onSeq (c<|)
 
+ -- for applying functions on inards of Expr type:
+onSeq :: (Seq Term -> Seq Term) -> Expr -> Expr
+onSeq f = Expr . f . combSeq
+
+isTerm (Term _) = True
+isTerm _        = False
 
     ------------------------
     -- EVALUATION FUNCTIONS:
     ------------------------
+ 
 
 
--- CHANGE THIS TO EVALTONORMAL, AND MAKE IT EVALUATE OUTERMOST-LEFTMOST
--- FIRST. MAPPING THE FULLY EVALUATED HEAD ONTO REST OF COMPUTATION:
---     1. EVAL HEAD EXPRESSION COMPLETELY
---     2. EVAL TOPMOST EXPRESSION, 
---     3. IF HEAD IS STILL NORMAL, START ON TAIL WITH (1), ELSE (2)
- -- evaluate leftmost-outermost redex until top level expression is in Normal
- -- Form:
-evalToNormal :: Expr -> [Expr]
-evalToNormal e
-    | S.null $ combSeq e  = [e]
-    | argsReq > argsAvail = map (prependTerm c) $ evalToNormal $ Expr cs
-    | otherwise           = e : evalToNormal (cEvaled `appendTerms` csRest)
-     where (c :< cs) = viewl $ combSeq e
-            -- does combinator 'c' have enough arguments to evaluate?:
-           argsReq   = takesArgs c
-           argsAvail = S.length cs
-            -- the transformed expression with remaining arguments:
-           (csArgs',csRest) = S.splitAt argsReq cs
-           cEvaled          = applyArgs c (F.toList csArgs')
+-- eval:           
+ -- if head has subExpr
+ --     lift subExpr to top level
+ --     goto `eval`
+ -- if head has sufficient args
+ --     evalTopLevel expression
+ --     goto `eval`
+ -- else
+ --     map `eval` in order over args
 
+
+evalToNormal :: Expr -> Expr
+evalToNormal = either evalArgs evalToNormal .  evalTopLevel . raiseHeadExprs
+    where evalArgs = evalArgsWith evalToNormal
+
+
+    ----------------------
+    -- EVALUATION HELPERS
+    ----------------------
+
+
+ -- Evaluate the head of the expression on its arguments. Return Left if 
+ -- no evaluation was done
+evalTopLevel :: Expr -> Either Expr Expr
+evalTopLevel e@(viewl.combSeq-> c :< cs)
+    | argsReq > S.length cs = Left e
+    | otherwise             = Right (cEvaled `appendTerms` csRest)
+     where argsReq     = takesArgs c
+           (as,csRest) = S.splitAt argsReq cs           
+           cEvaled     = applyArgs c (F.toList as) 
+
+
+ -- if the head of the Combinator sequence is a parenthesized sub expression,
+ -- move the whole sub-expression to the top-level and recurse:
+raiseHeadExprs :: Expr -> Expr
+raiseHeadExprs e@(viewl.combSeq-> c :< cs)
+    | isTerm c  = e
+    | otherwise = raiseHeadExprs $ Expr $ (combSeq$ subExpr c) >< cs
+
+
+ -- applies an evaluation function to each of the arguments to the head
+ -- combinator in an Expr:
+evalArgsWith :: (Expr -> Expr) -> Expr -> Expr
+evalArgsWith f = onSeq (\(viewl-> c:<cs)->  c <| fmap fOnSubs cs)
+    where fOnSubs t | isTerm t  = t
+                    | otherwise = t{ subExpr = f $ subExpr t }
