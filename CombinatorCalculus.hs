@@ -4,7 +4,7 @@ module CombinatorCalculus
     ( 
       Combinator(takesArgs,applyArgs),
       Term(), Expr(),
-      named, expr, isNormal, evalToNormal, (·)
+      named, expr, isNormal, traceToNormal, evalToNormal, (·)
     ) where
 
 
@@ -84,8 +84,11 @@ instance Combinator Term where
     applyArgs (Term c) = applyArgs c 
     applyArgs e        = applyArgs (subExpr e)
 
-    isNormal (Term c) = takesArgs c > 0
-    isNormal e        = isNormal (subExpr e)
+     -- a named expression (derived term) will be assumed to be in normal form,
+     -- even if the contained expression is not:
+    isNormal (SubExpr e) = isNormal e
+    isNormal (Term c)    = takesArgs c > 0
+    isNormal _           = True
    
  
 
@@ -156,27 +159,16 @@ isTerm _        = False
     -- EVALUATION FUNCTIONS:
     ------------------------
  
-
-
--- eval:           
- -- if head has subExpr
- --     lift subExpr to top level
- --     goto `eval`
- -- if head has sufficient args
- --     evalTopLevel expression
- --     goto `eval`
- -- else
- --     map `eval` in order over args
-
-
+{-
 evalToNormal :: Expr -> Expr
 evalToNormal = either evalArgs evalToNormal .  evalTopLevel . raiseHeadExprs
     where evalArgs = evalArgsWith evalToNormal
+-}
 
+evalToNormal :: Expr -> Expr
+evalToNormal = last . traceToNormal 
 
-    ----------------------
     -- EVALUATION HELPERS
-    ----------------------
 
 
  -- Evaluate the head of the expression on its arguments. Return Left if 
@@ -190,6 +182,7 @@ evalTopLevel e@(viewl.combSeq-> c :< cs)
            cEvaled     = applyArgs c (F.toList as) 
 
 
+{-  DEPRECATED
  -- if the head of the Combinator sequence is a parenthesized sub expression,
  -- move the whole sub-expression to the top-level and recurse:
 raiseHeadExprs :: Expr -> Expr
@@ -204,3 +197,31 @@ evalArgsWith :: (Expr -> Expr) -> Expr -> Expr
 evalArgsWith f = onSeq (\(viewl-> c:<cs)->  c <| fmap fOnSubs cs)
     where fOnSubs t | isTerm t  = t
                     | otherwise = t{ subExpr = f $ subExpr t }
+-}
+
+    -- TRACING EVALUATION:
+
+ -- Same as evalToNormal, but shows the evaluation steps:
+traceToNormal :: Expr -> [Expr]
+traceToNormal e = es ++ either traceArgs traceToNormal e' 
+    where traceArgs = traceArgsWith traceToNormal
+          es = raiseHeadTrace e
+          e' = evalTopLevel $ last es                          
+
+
+
+raiseHeadTrace :: Expr -> [Expr]
+raiseHeadTrace e@(viewl.combSeq-> c :< cs)
+    | isTerm c  = [e]
+    | otherwise = let e' = Expr $ (combSeq$ subExpr c) >< cs
+                   in e : raiseHeadTrace e'
+
+
+traceArgsWith :: (Expr -> [Expr]) -> Expr -> [Expr]
+traceArgsWith f = tail . traceTail . F.toList . combSeq
+    where traceTail (x:xs)  = map (Expr . (x<|)) (traceArgs' xs)
+          traceArgs' :: [Term] -> [Seq Term]
+          traceArgs' []     = [empty]
+          traceArgs' (c:cs) = [ cT <| csT  | cT <- fOnSubs c, csT <- traceArgs' cs ]
+          fOnSubs t | isNormal t = [t]
+                    | otherwise  = [ t{subExpr = e} | e <- f $ subExpr t ] 

@@ -8,19 +8,23 @@ import CombinatorCalculus
 main = do
      -- a random combinator expression: 
     let e = cI · (cI · S) · (K · S) · K · cI · S · cI  
-    print $ evalToNormal e
-  
- 
-    putStrLn "------------------------------------"
 
- 
-     -- the number 2 as a Church Numeral in the combinator calculus:
-    let two = S·(S·(K·S)·K)·cI
+    printSteps $ traceToNormal e
+
+    putStrLn "------------------------------------"
+     -- the number 2 as a Church Numeral in the combinator calculus. This time
+     -- we use a new type for I, instead of defining `I` in terms of `S` & `K`:
+    let two = S·(S·(K·S)·K)·I
     
      -- ...and "rendered" through application on two combinators `f` and `x`
      -- and evaluation:
-    print $ evalToNormal $ two · f · x
+    printSteps $ traceToNormal $ two · f · x
 
+    putStrLn "------------------------------------"
+     -- Here is a more verbose derivation of 2 in the combinator calculus:
+    let two' = S·(S·(K·S)·(S·(K·K)·I)) · (S·(S·(K·S)·(S·(K·K)·I))·(K·I))
+    printSteps $ traceToNormal $ two' · f · x
+ 
 
 
 -- a little helper for printing evaluation steps:
@@ -52,6 +56,13 @@ instance Combinator K where
  -- this combinator may substitute (S K K) for `I`, or that step may be hidden
  -- depending on how the evaluation function was defined:
 cI = (S · K · K)  `named` "I"
+
+ -- ...or we can define an `I` type as we did with `S` and `K` above:
+data I = I deriving Show
+instance Combinator I where
+    takesArgs _ = 1
+    applyArgs _ [a] = expr a 
+
 
 
  -- some "quasi-combinators" that let us play with Church Numerals encoded in 
