@@ -76,5 +76,15 @@ instance Combinator F where
     applyArgs F [_,b] = expr b
 
 
+data X = X
+instance Show X where
+    show X = "x"
+
+instance Combinator X where
+    takesArgs X   = 1
+    applyArgs X _ = undefined
+
+
+
 f = F
-x = expr cI `named` "x"    -- The combinator doesn't matter. We chose `I`
+x = X 

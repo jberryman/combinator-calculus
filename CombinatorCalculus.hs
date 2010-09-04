@@ -21,12 +21,6 @@ import qualified Data.Foldable as F
      4- hide existentials in type signatures
 -}
 
-{-
-    TODO:
-      -add eval function that evaluates arguments fully:
-          -applicative order: evaluates arguments to normal form before applying
-      -'read' instance for expressions
--}
 ------------------------------------------------------------
 
 
@@ -84,11 +78,8 @@ instance Combinator Term where
     applyArgs (Term c) = applyArgs c 
     applyArgs e        = applyArgs (subExpr e)
 
-     -- a named expression (derived term) will be assumed to be in normal form,
-     -- even if the contained expression is not:
-    isNormal (SubExpr e) = isNormal e
-    isNormal (Term c)    = takesArgs c > 0
-    isNormal _           = True
+    isNormal (Term c) = takesArgs c > 0
+    isNormal e        = isNormal (subExpr e)
    
  
 
@@ -142,11 +133,8 @@ expr = Expr . singleton . toTerm
 ---- NOT EXPORTED:
 
  -- add a sequence of terms to end of expression:
-appendTerms :: Expr -> (Seq Term) -> Expr
+appendTerms :: Expr -> Seq Term -> Expr
 appendTerms (Expr s) s' = Expr ( s >< s') 
-
- -- unpack, prepend term, re-pack expression:
-prependTerm c = onSeq (c<|)
 
  -- for applying functions on inards of Expr type:
 onSeq :: (Seq Term -> Seq Term) -> Expr -> Expr
@@ -155,18 +143,15 @@ onSeq f = Expr . f . combSeq
 isTerm (Term _) = True
 isTerm _        = False
 
+
     ------------------------
     -- EVALUATION FUNCTIONS:
     ------------------------
  
-{-
-evalToNormal :: Expr -> Expr
-evalToNormal = either evalArgs evalToNormal .  evalTopLevel . raiseHeadExprs
-    where evalArgs = evalArgsWith evalToNormal
--}
 
 evalToNormal :: Expr -> Expr
 evalToNormal = last . traceToNormal 
+
 
     -- EVALUATION HELPERS
 
@@ -182,24 +167,9 @@ evalTopLevel e@(viewl.combSeq-> c :< cs)
            cEvaled     = applyArgs c (F.toList as) 
 
 
-{-  DEPRECATED
- -- if the head of the Combinator sequence is a parenthesized sub expression,
- -- move the whole sub-expression to the top-level and recurse:
-raiseHeadExprs :: Expr -> Expr
-raiseHeadExprs e@(viewl.combSeq-> c :< cs)
-    | isTerm c  = e
-    | otherwise = raiseHeadExprs $ Expr $ (combSeq$ subExpr c) >< cs
-
-
- -- applies an evaluation function to each of the arguments to the head
- -- combinator in an Expr:
-evalArgsWith :: (Expr -> Expr) -> Expr -> Expr
-evalArgsWith f = onSeq (\(viewl-> c:<cs)->  c <| fmap fOnSubs cs)
-    where fOnSubs t | isTerm t  = t
-                    | otherwise = t{ subExpr = f $ subExpr t }
--}
 
     -- TRACING EVALUATION:
+
 
  -- Same as evalToNormal, but shows the evaluation steps:
 traceToNormal :: Expr -> [Expr]
@@ -213,7 +183,7 @@ traceToNormal e = es ++ either traceArgs traceToNormal e'
 raiseHeadTrace :: Expr -> [Expr]
 raiseHeadTrace e@(viewl.combSeq-> c :< cs)
     | isTerm c  = [e]
-    | otherwise = let e' = Expr $ (combSeq$ subExpr c) >< cs
+    | otherwise = let e' = Expr $ combSeq (subExpr c) >< cs
                    in e : raiseHeadTrace e'
 
 
@@ -223,5 +193,8 @@ traceArgsWith f = tail . traceTail . F.toList . combSeq
           traceArgs' :: [Term] -> [Seq Term]
           traceArgs' []     = [empty]
           traceArgs' (c:cs) = [ cT <| csT  | cT <- fOnSubs c, csT <- traceArgs' cs ]
-          fOnSubs t | isNormal t = [t]
-                    | otherwise  = [ t{subExpr = e} | e <- f $ subExpr t ] 
+          fOnSubs t | isTerm t  = [t]
+                    | otherwise = map liftSingletons $ f $ subExpr t  
+          liftSingletons e@(viewl.combSeq-> c:<cs)
+                    | S.null cs = c
+                    | otherwise = SubExpr e
