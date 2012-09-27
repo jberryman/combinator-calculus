@@ -21,6 +21,10 @@ import qualified Data.Foldable as F
      4- hide existentials in type signatures
 -}
 
+{- TODO:
+- - enforce the use only of terms passsed as arguments in the 
+-    definition of applyArgs in a Combinator class instance declaration
+--}
 ------------------------------------------------------------
 
 
